@@ -1,6 +1,9 @@
 # sbuerk/extended-path-repository
 
-[![Latest release](https://img.shields.io/github/v/release/sbuerk/extended-path-repository?label=release&sort=semver)](https://github.com/sbuerk/extended-path-repository/releases/latest)
+[![Latest version](https://img.shields.io/packagist/v/sbuerk/extended-path-repository)](https://packagist.org/packages/sbuerk/extended-path-repository)
+[![PHP version](https://img.shields.io/packagist/dependency-v/sbuerk/extended-path-repository/php)](https://packagist.org/packages/sbuerk/extended-path-repository)
+[![Total downloads](https://img.shields.io/packagist/dt/sbuerk/extended-path-repository)](https://packagist.org/packages/sbuerk/extended-path-repository)
+[![License](https://img.shields.io/packagist/l/sbuerk/extended-path-repository)](LICENSE)
 
 A [Composer](https://getcomposer.org/) plugin that extends the built-in
 [`path` repository](https://getcomposer.org/doc/05-repositories.md#path) with:
