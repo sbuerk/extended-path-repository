@@ -1,5 +1,7 @@
 # sbuerk/extended-path-repository
 
+[![Latest release](https://img.shields.io/github/v/release/sbuerk/extended-path-repository?label=release&sort=semver)](https://github.com/sbuerk/extended-path-repository/releases/latest)
+
 A [Composer](https://getcomposer.org/) plugin that extends the built-in
 [`path` repository](https://getcomposer.org/doc/05-repositories.md#path) with:
 
