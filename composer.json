@@ -13,7 +13,8 @@
     "authors": [
         {
             "name": "Stefan Bürk",
-            "email": "stefan@buerk.tech"
+            "email": "stefan@buerk.tech",
+            "role": "Maintainer"
         }
     ],
     "require": {
