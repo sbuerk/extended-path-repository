@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-06-25
 
 ### Added
 
@@ -20,4 +20,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation under `docs/`, unit/functional test suite, and a GitHub Actions
   CI pipeline.
 
-[Unreleased]: https://github.com/sbuerk/extended-path-repository
+[1.0.0]: https://github.com/sbuerk/extended-path-repository/releases/tag/1.0.0
