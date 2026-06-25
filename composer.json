@@ -1,0 +1,60 @@
+{
+    "name": "sbuerk/extended-path-repository",
+    "description": "Composer plugin that extends the built-in path repository with additional version metadata detection and tolerant (non-failing) path matching.",
+    "license": "GPL-2.0-or-later",
+    "type": "composer-plugin",
+    "keywords": [
+        "composer",
+        "composer-plugin",
+        "path",
+        "repository",
+        "typo3"
+    ],
+    "authors": [
+        {
+            "name": "Stefan Bürk",
+            "email": "stefan@buerk.tech"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "composer-plugin-api": "^2.9",
+        "composer/semver": "^3.0"
+    },
+    "require-dev": {
+        "composer/composer": "^2.9",
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "SBUERK\\ExtendedPathRepository\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "SBUERK\\ExtendedPathRepository\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "class": "SBUERK\\ExtendedPathRepository\\Plugin"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "sbuerk/extended-path-repository": true
+        }
+    },
+    "scripts": {
+        "ci:php:cs": "php-cs-fixer fix --dry-run --diff --using-cache=no",
+        "ci:php:stan": "phpstan analyse --no-progress",
+        "ci:tests:unit": "phpunit --configuration phpunit.xml.dist",
+        "ci": [
+            "@ci:php:cs",
+            "@ci:php:stan",
+            "@ci:tests:unit"
+        ],
+        "fix:cs": "php-cs-fixer fix --using-cache=no"
+    }
+}
