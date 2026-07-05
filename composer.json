@@ -39,7 +39,10 @@
         }
     },
     "extra": {
-        "class": "SBUERK\\ExtendedPathRepository\\Plugin"
+        "class": "SBUERK\\ExtendedPathRepository\\Plugin",
+        "plugin-modifies-downloads": true,
+        "plugin-modifies-install-path": true,
+        "plugin-optional": false
     },
     "config": {
         "sort-packages": true,
