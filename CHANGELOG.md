@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Composer plugin-ordering hints in the `composer.json` `extra` section
+  (`plugin-modifies-downloads`, `plugin-modifies-install-path`,
+  `plugin-optional: false`) so the plugin is activated as early as possible –
+  before normal packages are downloaded and installed.
+
 ## [1.0.0] - 2026-06-25
 
 ### Added
