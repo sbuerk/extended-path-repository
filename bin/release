@@ -3,7 +3,7 @@
 # bin/release — cut a release for sbuerk/extended-path-repository.
 #
 # Usage:
-#   bin/release <x.y.z>
+#   bin/release [--dry-run] <x.y.z>
 #
 # Given a semantic version "x.y.z" this script drives the full release flow:
 #
@@ -19,6 +19,10 @@
 #      "[TASK] Post release <x.y.z>" PR, wait for green CI and rebase-merge
 #      it (admin, delete branch).
 #
+# With --dry-run the read-only checks run for real, the CHANGELOG changes are
+# previewed as diffs, and every mutating git/gh command is printed instead of
+# executed (no branches, commits, pushes, tags or PRs are created).
+#
 # Requirements: git, gh (authenticated). Run from a clean working tree.
 #
 set -euo pipefail
@@ -30,6 +34,48 @@ warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31mERR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
+
+usage() { printf 'usage: bin/release [--dry-run] <x.y.z>\n'; }
+
+DRY_RUN=0
+
+# Execute a state-changing command, or, in --dry-run mode, print it instead.
+run() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '\033[1;36m[dry-run]\033[0m would run: %s\n' "$(printf '%q ' "$@")"
+    else
+        "$@"
+    fi
+}
+
+# Rewrite CHANGELOG file "$1" so the "[Unreleased]" section becomes the released
+# version (heading + link-reference footer).
+changelog_to_release() {
+    local file="$1"
+    sed -i "s|^## \[Unreleased\]\$|## [${VERSION}] - ${RELEASE_DATE}|" "$file"
+    sed -i "s|^\[Unreleased\]:.*\$|[${VERSION}]: ${REPO_URL}/releases/tag/${VERSION}|" "$file"
+}
+
+# Rewrite CHANGELOG file "$1" so the "[Unreleased]" section (heading + compare
+# link) is re-added above the just-released version.
+changelog_readd_unreleased() {
+    local file="$1"
+    awk -v ver="${VERSION}" -v url="${REPO_URL}" '
+        !hdr && $0 ~ ("^## \\[" ver "\\] - ") {
+            print "## [Unreleased]"
+            print ""
+            hdr = 1
+        }
+        !lnk && $0 ~ ("^\\[" ver "\\]: ") {
+            print "[Unreleased]: " url "/compare/" ver "...HEAD"
+            lnk = 1
+        }
+        { print }
+    ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+}
+
+# Show the difference between two files without failing under `set -e`.
+show_diff() { git --no-pager diff --no-index -- "$1" "$2" || true; }
 
 # Block until CI checks have been *registered* for a PR (they appear a few
 # seconds after the PR is opened), then return so the caller can --watch them.
@@ -67,8 +113,20 @@ open_pr() {
 require_cmd git
 require_cmd gh
 
-[ "$#" -eq 1 ] || die "usage: bin/release <x.y.z>"
-VERSION="$1"
+VERSION=""
+for arg in "$@"; do
+    case "$arg" in
+        -n|--dry-run) DRY_RUN=1 ;;
+        -h|--help)    usage; exit 0 ;;
+        -*)           die "unknown option: $arg" ;;
+        *)
+            [ -z "$VERSION" ] || die "unexpected extra argument: $arg"
+            VERSION="$arg"
+            ;;
+    esac
+done
+
+[ -n "$VERSION" ] || { usage >&2; die "missing version argument"; }
 
 # Same shape the publish workflow accepts for a version tag (x.y.z, digits).
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -90,6 +148,7 @@ REPO_URL="$(gh repo view --json url --jq .url)"
 
 # --- 1. refuse duplicate versions -------------------------------------------
 
+[ "$DRY_RUN" -eq 1 ] && log "DRY RUN — no branches, commits, pushes, tags or PRs will be created"
 log "Preparing release ${VERSION} from '${BASE_BRANCH}'"
 git fetch --tags --quiet origin || warn "could not fetch tags from origin"
 
@@ -111,71 +170,81 @@ fi
 # --- 2. release branch + changelog ------------------------------------------
 
 log "Creating branch ${RELEASE_BRANCH}"
-git switch -c "${RELEASE_BRANCH}" "${BASE_BRANCH}"
+run git switch -c "${RELEASE_BRANCH}" "${BASE_BRANCH}"
 
 log "Rewriting CHANGELOG '[Unreleased]' -> '[${VERSION}] - ${RELEASE_DATE}'"
-# Turn the section heading into the released version ...
-sed -i "s|^## \[Unreleased\]\$|## [${VERSION}] - ${RELEASE_DATE}|" CHANGELOG.md
-# ... and its link-reference footer into a release-tag link.
-sed -i "s|^\[Unreleased\]:.*\$|[${VERSION}]: ${REPO_URL}/releases/tag/${VERSION}|" CHANGELOG.md
-
-git add CHANGELOG.md
-git commit -m "[RELEASE] ${VERSION}"
+if [ "$DRY_RUN" -eq 1 ]; then
+    RELEASE_PREVIEW="$(mktemp)"
+    cp CHANGELOG.md "${RELEASE_PREVIEW}"
+    changelog_to_release "${RELEASE_PREVIEW}"
+    show_diff CHANGELOG.md "${RELEASE_PREVIEW}"
+else
+    changelog_to_release CHANGELOG.md
+    run git add CHANGELOG.md
+    run git commit -m "[RELEASE] ${VERSION}"
+fi
 
 log "Pushing ${RELEASE_BRANCH}"
-git push -u origin "${RELEASE_BRANCH}"
+run git push -u origin "${RELEASE_BRANCH}"
 
 # --- 3. open PR, watch CI, merge --------------------------------------------
 
-RELEASE_PR="$(open_pr --fill)"
-log "Opened release PR #${RELEASE_PR}"
-
-wait_for_checks_registered "${RELEASE_PR}"
-watch_checks "${RELEASE_PR}"
-
-log "Merging release PR #${RELEASE_PR}"
-git switch "${BASE_BRANCH}"
-gh pr merge "${RELEASE_PR}" --rebase --delete-branch --admin
+if [ "$DRY_RUN" -eq 1 ]; then
+    run gh pr create --base "${BASE_BRANCH}" --fill
+    log "[dry-run] would watch CI, then rebase-merge the release PR (admin)"
+else
+    RELEASE_PR="$(open_pr --fill)"
+    log "Opened release PR #${RELEASE_PR}"
+    wait_for_checks_registered "${RELEASE_PR}"
+    watch_checks "${RELEASE_PR}"
+    log "Merging release PR #${RELEASE_PR}"
+    run git switch "${BASE_BRANCH}"
+    run gh pr merge "${RELEASE_PR}" --rebase --delete-branch --admin
+fi
 
 # --- 4. tag the released commit ---------------------------------------------
 
 log "Refreshing ${BASE_BRANCH} and tagging ${VERSION}"
-git pull --ff-only origin "${BASE_BRANCH}"
-git tag "${VERSION}"
-git push origin "${VERSION}"
-log "Pushed tag ${VERSION} (publish workflow will create the GitHub release)"
+run git switch "${BASE_BRANCH}"
+run git pull --ff-only origin "${BASE_BRANCH}"
+run git tag "${VERSION}"
+run git push origin "${VERSION}"
+log "Tag ${VERSION} pushed (publish workflow will create the GitHub release)"
 
 # --- 5. post-release: re-add [Unreleased] -----------------------------------
 
 log "Creating branch ${POST_BRANCH}"
-git switch -c "${POST_BRANCH}" "${BASE_BRANCH}"
+run git switch -c "${POST_BRANCH}" "${BASE_BRANCH}"
 
-if grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+log "Re-adding '[Unreleased]' section to CHANGELOG"
+if [ "$DRY_RUN" -eq 1 ]; then
+    POST_PREVIEW="$(mktemp)"
+    cp "${RELEASE_PREVIEW}" "${POST_PREVIEW}"
+    if grep -q '^## \[Unreleased\]' "${POST_PREVIEW}"; then
+        warn "'[Unreleased]' already present — would skip re-add"
+    else
+        changelog_readd_unreleased "${POST_PREVIEW}"
+        show_diff "${RELEASE_PREVIEW}" "${POST_PREVIEW}"
+    fi
+    rm -f "${RELEASE_PREVIEW}" "${POST_PREVIEW}"
+elif grep -q '^## \[Unreleased\]' CHANGELOG.md; then
     warn "'[Unreleased]' already present in CHANGELOG — skipping re-add"
 else
-    log "Re-adding '[Unreleased]' section to CHANGELOG"
-    awk -v ver="${VERSION}" -v url="${REPO_URL}" '
-        # Insert the Unreleased heading (+ one blank line) above the released
-        # version heading, keeping a single empty line between the two.
-        !hdr && $0 ~ ("^## \\[" ver "\\] - ") {
-            print "## [Unreleased]"
-            print ""
-            hdr = 1
-        }
-        # Insert the Unreleased compare link above the released version link.
-        !lnk && $0 ~ ("^\\[" ver "\\]: ") {
-            print "[Unreleased]: " url "/compare/" ver "...HEAD"
-            lnk = 1
-        }
-        { print }
-    ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
-
-    git add CHANGELOG.md
-    git commit -m "[DOCS] Re-add Unreleased changelog section after ${VERSION}"
+    changelog_readd_unreleased CHANGELOG.md
+    run git add CHANGELOG.md
+    run git commit -m "[DOCS] Re-add Unreleased changelog section after ${VERSION}"
 fi
 
 log "Pushing ${POST_BRANCH}"
-git push -u origin "${POST_BRANCH}"
+run git push -u origin "${POST_BRANCH}"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    run gh pr create --base "${BASE_BRANCH}" --title "[TASK] Post release ${VERSION}" \
+        --body "Re-add the [Unreleased] section to the changelog after releasing ${VERSION}."
+    log "[dry-run] would wait for green CI, then rebase-merge the post-release PR (admin)"
+    log "DRY RUN complete — nothing was changed."
+    exit 0
+fi
 
 POST_PR="$(open_pr --title "[TASK] Post release ${VERSION}" \
     --body "Re-add the \`[Unreleased]\` section to the changelog after releasing ${VERSION}.")"
@@ -187,10 +256,10 @@ wait_for_checks_registered "${POST_PR}"
 watch_checks "${POST_PR}"
 
 log "Merging post-release PR #${POST_PR}"
-git switch "${BASE_BRANCH}"
-gh pr merge "${POST_PR}" --rebase --delete-branch --admin
+run git switch "${BASE_BRANCH}"
+run gh pr merge "${POST_PR}" --rebase --delete-branch --admin
 
 log "Refreshing ${BASE_BRANCH}"
-git pull --ff-only origin "${BASE_BRANCH}"
+run git pull --ff-only origin "${BASE_BRANCH}"
 
 log "Release ${VERSION} complete."
