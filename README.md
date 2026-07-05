@@ -84,6 +84,20 @@ Short overview here – details live in [`docs/`](docs/README.md):
 
 Contributions are welcome – please read [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Releasing
+
+Maintainers cut releases with the [`bin/release`](bin/release) script:
+
+```bash
+bin/release x.y.z
+```
+
+It updates the changelog, opens and merges the release pull request, pushes the
+version tag (which triggers the GitHub release) and re-opens the `[Unreleased]`
+changelog section. See
+[CONTRIBUTING.md](CONTRIBUTING.md#releasing-maintainers) for the details.
+Requires an authenticated `gh` CLI.
+
 ## License
 
 Released under the [GNU General Public License v2.0 or later](LICENSE).

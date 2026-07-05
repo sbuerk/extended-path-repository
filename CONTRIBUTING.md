@@ -73,6 +73,32 @@ The value is validated with composer's semantic version parser and only
 used when no higher-precedence source applies.
 ```
 
+## Releasing (maintainers)
+
+Releases are cut with the [`bin/release`](bin/release) script, which automates
+the branch, changelog, pull-request, merge and tagging flow:
+
+```bash
+bin/release x.y.z
+```
+
+Given a semantic version `x.y.z` it:
+
+1. Verifies the version is not already tagged and that the `[Unreleased]`
+   changelog section is not empty.
+2. Creates `release-x.y.z`, rewrites the `[Unreleased]` changelog section into
+   the released version, commits `[RELEASE] x.y.z`, pushes and opens a pull
+   request.
+3. Waits for CI to pass, then rebase-merges the pull request (admin mode).
+4. Tags `x.y.z` on the refreshed base branch and pushes the tag, which triggers
+   the publish workflow and the GitHub release.
+5. Creates `post-release-x.y.z`, re-adds the `[Unreleased]` changelog section,
+   opens a `[TASK] Post release x.y.z` pull request, waits for green CI and
+   rebase-merges it.
+
+Requirements: an authenticated [`gh`](https://cli.github.com/) CLI and a clean
+working tree. Run it from the branch you want to release (usually `main`).
+
 ## Reporting issues
 
 When reporting a bug, please include your PHP and Composer versions, the relevant
