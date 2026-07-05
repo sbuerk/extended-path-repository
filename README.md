@@ -40,6 +40,30 @@ composer require sbuerk/extended-path-repository
 > [docs/installation.md](docs/installation.md) and
 > [docs/limitations.md](docs/limitations.md).
 
+The plugin declares Composer's plugin-ordering hints in its `composer.json`
+`extra` section so that, once present, it is activated as early as possible –
+before normal packages are downloaded and installed:
+
+```json
+{
+    "extra": {
+        "plugin-modifies-downloads": true,
+        "plugin-modifies-install-path": true,
+        "plugin-optional": false
+    }
+}
+```
+
+* **`plugin-modifies-downloads`** – Composer activates the plugin before other
+  packages are fetched.
+* **`plugin-modifies-install-path`** – Composer activates the plugin as early as
+  possible.
+* **`plugin-optional: false`** – the plugin must not be silently skipped in
+  non-interactive runs.
+
+These hints only affect ordering *after* the plugin is installed; they do not
+change the first-install caveat described above.
+
 ## Requirements
 
 * PHP **8.2+**
