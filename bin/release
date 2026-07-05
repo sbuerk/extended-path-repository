@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+#
+# bin/release — cut a release for sbuerk/extended-path-repository.
+#
+# Usage:
+#   bin/release <x.y.z>
+#
+# Given a semantic version "x.y.z" this script drives the full release flow:
+#
+#   1. Refuse to continue if a tag for that version already exists.
+#   2. Branch  release-<x.y.z>  off the current branch, turn the CHANGELOG
+#      "[Unreleased]" section into the released version, commit as
+#      "[RELEASE] <x.y.z>", push and open a PR (gh pr create --fill).
+#   3. Watch CI; once green, rebase-merge the PR (admin, delete branch).
+#   4. Tag <x.y.z> on the refreshed base branch and push the tag
+#      (this triggers the publish workflow / GitHub release).
+#   5. Branch  post-release-<x.y.z>  off the base branch, re-add the
+#      "[Unreleased]" section to the CHANGELOG, commit, push and open a
+#      "[TASK] Post release <x.y.z>" PR, wait for green CI and rebase-merge
+#      it (admin, delete branch).
+#
+# Requirements: git, gh (authenticated). Run from a clean working tree.
+#
+set -euo pipefail
+
+# --- helpers ----------------------------------------------------------------
+
+log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31mERR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+require_cmd() { command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"; }
+
+# Block until CI checks have been *registered* for a PR (they appear a few
+# seconds after the PR is opened), then return so the caller can --watch them.
+wait_for_checks_registered() {
+    local pr="$1" tries=0 max=30 count
+    while :; do
+        count="$(gh pr view "$pr" --json statusCheckRollup \
+            --jq '.statusCheckRollup | length' 2>/dev/null || echo 0)"
+        [ "${count:-0}" -gt 0 ] && return 0
+        tries=$((tries + 1))
+        [ "$tries" -ge "$max" ] && die "no CI checks registered for PR #$pr"
+        sleep 2
+    done
+}
+
+# Watch the CI checks of a PR and fail hard if any check does not pass.
+watch_checks() {
+    local pr="$1"
+    log "Watching CI checks for PR #$pr ..."
+    if ! gh pr checks "$pr" --watch --interval 10 --fail-fast; then
+        die "CI checks did not pass for PR #$pr — aborting release"
+    fi
+    log "CI green for PR #$pr"
+}
+
+# Open a PR for the current branch and echo its number.
+open_pr() {
+    local url
+    url="$(gh pr create --base "$BASE_BRANCH" "$@")"
+    printf '%s\n' "${url##*/}"
+}
+
+# --- argument / environment validation --------------------------------------
+
+require_cmd git
+require_cmd gh
+
+[ "$#" -eq 1 ] || die "usage: bin/release <x.y.z>"
+VERSION="$1"
+
+# Same shape the publish workflow accepts for a version tag (x.y.z, digits).
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "invalid version '$VERSION' — expected x.y.z (digits only)"
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git repository"
+[ -z "$(git status --porcelain)" ] || die "working tree is not clean — commit or stash first"
+
+# Run from the repository root so CHANGELOG.md paths resolve.
+cd "$(git rev-parse --show-toplevel)"
+
+[ -f CHANGELOG.md ] || die "CHANGELOG.md not found"
+
+BASE_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+RELEASE_BRANCH="release-${VERSION}"
+POST_BRANCH="post-release-${VERSION}"
+RELEASE_DATE="$(date +%Y-%m-%d)"
+REPO_URL="$(gh repo view --json url --jq .url)"
+
+# --- 1. refuse duplicate versions -------------------------------------------
+
+log "Preparing release ${VERSION} from '${BASE_BRANCH}'"
+git fetch --tags --quiet origin || warn "could not fetch tags from origin"
+
+if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null \
+   || [ -n "$(git ls-remote --tags origin "refs/tags/${VERSION}")" ]; then
+    die "version ${VERSION} already tagged — nothing to do"
+fi
+
+# Guard against releasing an empty changelog section.
+if ! awk '
+        /^## \[Unreleased\]/ { inblock = 1; next }
+        inblock && /^## \[/   { exit }
+        inblock && NF         { found = 1 }
+        END                   { exit(found ? 0 : 1) }
+    ' CHANGELOG.md; then
+    die "the CHANGELOG '[Unreleased]' section is empty — add entries first"
+fi
+
+# --- 2. release branch + changelog ------------------------------------------
+
+log "Creating branch ${RELEASE_BRANCH}"
+git switch -c "${RELEASE_BRANCH}" "${BASE_BRANCH}"
+
+log "Rewriting CHANGELOG '[Unreleased]' -> '[${VERSION}] - ${RELEASE_DATE}'"
+# Turn the section heading into the released version ...
+sed -i "s|^## \[Unreleased\]\$|## [${VERSION}] - ${RELEASE_DATE}|" CHANGELOG.md
+# ... and its link-reference footer into a release-tag link.
+sed -i "s|^\[Unreleased\]:.*\$|[${VERSION}]: ${REPO_URL}/releases/tag/${VERSION}|" CHANGELOG.md
+
+git add CHANGELOG.md
+git commit -m "[RELEASE] ${VERSION}"
+
+log "Pushing ${RELEASE_BRANCH}"
+git push -u origin "${RELEASE_BRANCH}"
+
+# --- 3. open PR, watch CI, merge --------------------------------------------
+
+RELEASE_PR="$(open_pr --fill)"
+log "Opened release PR #${RELEASE_PR}"
+
+wait_for_checks_registered "${RELEASE_PR}"
+watch_checks "${RELEASE_PR}"
+
+log "Merging release PR #${RELEASE_PR}"
+git switch "${BASE_BRANCH}"
+gh pr merge "${RELEASE_PR}" --rebase --delete-branch --admin
+
+# --- 4. tag the released commit ---------------------------------------------
+
+log "Refreshing ${BASE_BRANCH} and tagging ${VERSION}"
+git pull --ff-only origin "${BASE_BRANCH}"
+git tag "${VERSION}"
+git push origin "${VERSION}"
+log "Pushed tag ${VERSION} (publish workflow will create the GitHub release)"
+
+# --- 5. post-release: re-add [Unreleased] -----------------------------------
+
+log "Creating branch ${POST_BRANCH}"
+git switch -c "${POST_BRANCH}" "${BASE_BRANCH}"
+
+if grep -q '^## \[Unreleased\]' CHANGELOG.md; then
+    warn "'[Unreleased]' already present in CHANGELOG — skipping re-add"
+else
+    log "Re-adding '[Unreleased]' section to CHANGELOG"
+    awk -v ver="${VERSION}" -v url="${REPO_URL}" '
+        # Insert the Unreleased heading (+ one blank line) above the released
+        # version heading, keeping a single empty line between the two.
+        !hdr && $0 ~ ("^## \\[" ver "\\] - ") {
+            print "## [Unreleased]"
+            print ""
+            hdr = 1
+        }
+        # Insert the Unreleased compare link above the released version link.
+        !lnk && $0 ~ ("^\\[" ver "\\]: ") {
+            print "[Unreleased]: " url "/compare/" ver "...HEAD"
+            lnk = 1
+        }
+        { print }
+    ' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
+
+    git add CHANGELOG.md
+    git commit -m "[DOCS] Re-add Unreleased changelog section after ${VERSION}"
+fi
+
+log "Pushing ${POST_BRANCH}"
+git push -u origin "${POST_BRANCH}"
+
+POST_PR="$(open_pr --title "[TASK] Post release ${VERSION}" \
+    --body "Re-add the \`[Unreleased]\` section to the changelog after releasing ${VERSION}.")"
+log "Opened post-release PR #${POST_PR}"
+
+# Give the pipelines a moment to be scheduled before watching them.
+sleep 10
+wait_for_checks_registered "${POST_PR}"
+watch_checks "${POST_PR}"
+
+log "Merging post-release PR #${POST_PR}"
+git switch "${BASE_BRANCH}"
+gh pr merge "${POST_PR}" --rebase --delete-branch --admin
+
+log "Refreshing ${BASE_BRANCH}"
+git pull --ff-only origin "${BASE_BRANCH}"
+
+log "Release ${VERSION} complete."
