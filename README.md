@@ -66,7 +66,7 @@ change the first-install caveat described above.
 
 ## Requirements
 
-* PHP **8.2+**
+* PHP **8.1+**
 * Composer **2.9+** (`composer-plugin-api: ^2.9`)
 
 ## Documentation

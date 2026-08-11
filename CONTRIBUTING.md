@@ -36,7 +36,7 @@ across the supported PHP and Composer matrix.
 
 ## Coding standards
 
-* Target **PHP 8.2+**; do not use APIs newer than the minimum supported PHP /
+* Target **PHP 8.1+**; do not use APIs newer than the minimum supported PHP /
   Composer (`composer-plugin-api: ^2.9`).
 * `declare(strict_types=1);` in every PHP file.
 * Services are **stateless**; prefer constructor injection.
