@@ -2,7 +2,7 @@
 
 ## Requirements
 
-* PHP **8.2** or later
+* PHP **8.1** or later
 * Composer **2.9** or later (the plugin requires `composer-plugin-api: ^2.9`)
 
 ## Install the plugin

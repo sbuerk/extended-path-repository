@@ -2,7 +2,7 @@
 
 ## Requirements
 
-* PHP **8.2+**
+* PHP **8.1+**
 * Composer **2.9+**
 
 ## Setup
@@ -31,7 +31,7 @@ composer ci
 ```
 
 > [!TIP]
-> Run PHP CS Fixer with PHP 8.2 to avoid the "running on a newer PHP version"
+> Run PHP CS Fixer with PHP 8.1 to avoid the "running on a newer PHP version"
 > notice and to match the project's minimum supported version.
 
 ## Project layout
@@ -75,6 +75,6 @@ The functional tests use the real Composer classes (pulled in via the
 ## A note on the local toolchain
 
 This repository is developed with [`direnv`](https://direnv.net/); the
-`.envrc` provides PHP 8.2 and Composer 2 on `PATH`. The `.envrc` file is
+`.envrc` provides PHP 8.1 and Composer 2 on `PATH`. The `.envrc` file is
 intentionally git-ignored. If you use the same setup, run `direnv allow` once in
 the project directory.
