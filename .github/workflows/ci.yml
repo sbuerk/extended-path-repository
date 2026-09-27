@@ -74,3 +74,21 @@ jobs:
 
       - name: Run tests
         run: composer ci:tests:unit
+
+  # The one status the branch rulesets require. Matrix job names change with
+  # the matrix, a required check listing each of them would have to follow.
+  all-checks:
+    name: "all checks"
+    if: always()
+    needs:
+      - qa
+      - tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to succeed
+        env:
+          QA_RESULT: ${{ needs.qa.result }}
+          TESTS_RESULT: ${{ needs.tests.result }}
+        run: |
+          echo "qa: ${QA_RESULT}, tests: ${TESTS_RESULT}"
+          [ "${QA_RESULT}" = "success" ] && [ "${TESTS_RESULT}" = "success" ]
