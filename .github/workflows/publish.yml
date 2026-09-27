@@ -26,18 +26,18 @@ jobs:
 
       - name: Get version
         id: get-version
-        run: echo "version=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "${GITHUB_ENV}"
 
       - name: Get comment
         id: get-comment
         run: |
-          readonly local releaseCommentPrependBody="$( git tag -l ${{ env.version }} --format '%(contents)' )"
+          releaseCommentPrependBody="$( git tag -l "${version}" --format '%(contents)' )"
           if (( $(grep -c . <<<"${releaseCommentPrependBody// }") > 1 )); then
             {
               echo 'releaseCommentPrependBody<<EOF'
               echo "$releaseCommentPrependBody"
               echo EOF
-            } >> "$GITHUB_ENV"
+            } >> "${GITHUB_ENV}"
           fi
 
       # Note that when a release already exists for the tag, only files will be uploaded and lets this act as a
